@@ -929,6 +929,7 @@ func setSecretValues(ctx context.Context, crt *cmapi.Certificate, s *corev1.Secr
 	}
 
 	s.Annotations[cmapi.CertificateNameKey] = crt.Name
+	s.Annotations[cmapi.CertificateNamespaceKey] = crt.Namespace
 	s.Annotations[cmapi.IssuerNameAnnotationKey] = crt.Spec.IssuerRef.Name
 	s.Annotations[cmapi.IssuerKindAnnotationKey] = apiutil.IssuerKind(crt.Spec.IssuerRef)
 

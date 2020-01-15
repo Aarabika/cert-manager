@@ -24,11 +24,18 @@ const (
 	IssuerNameAnnotationKey = "certmanager.k8s.io/issuer-name"
 	IssuerKindAnnotationKey = "certmanager.k8s.io/issuer-kind"
 	CertificateNameKey      = "certmanager.k8s.io/certificate-name"
+	CertificateNamespaceKey = "certmanager.k8s.io/certificate-namespace"
 )
 
 // Annotation names for CertificateRequests
 const (
 	CRPrivateKeyAnnotationKey = "certmanager.k8s.io/private-key-secret-name"
+)
+
+const (
+	// SecretsNamespaceAnnotation can be used to override base secrets namespace location
+	// default location - together with certificate resource
+	SecretsNamespaceAnnotationKey = "cert-manager.io/secret-namespace"
 )
 
 // ConditionStatus represents a condition's status.

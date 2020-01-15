@@ -99,7 +99,7 @@ func (c *controller) Sync(ctx context.Context, crt *v1alpha1.Certificate) (err e
 
 	dbg.Info("Fetching existing certificate from secret", "name", crtCopy.Spec.SecretName)
 	// grab existing certificate and validate private key
-	certs, key, err := kube.SecretTLSKeyPair(ctx, c.secretLister, crtCopy.Namespace, crtCopy.Spec.SecretName)
+	certs, key, err := kube.SecretTLSKeyPair(ctx, c.secretLister, apiutil.GetSecretsNamespace(crt), crtCopy.Spec.SecretName)
 	// if we don't have a certificate, we need to trigger a re-issue immediately
 	if err != nil && !(k8sErrors.IsNotFound(err) || errors.IsInvalidData(err)) {
 		return err
@@ -288,7 +288,7 @@ func certificateMatchesSpec(crt *v1alpha1.Certificate, key crypto.Signer, cert *
 	// get a copy of the current secret resource
 	// Note that we already know that it exists, no need to check for errors
 	// TODO: Refactor so that the secret is passed as argument?
-	secret, err := secretLister.Secrets(crt.Namespace).Get(crt.Spec.SecretName)
+	secret, err := secretLister.Secrets(apiutil.GetSecretsNamespace(crt)).Get(crt.Spec.SecretName)
 
 	// validate that the issuer is correct
 	if crt.Spec.IssuerRef.Name != secret.Annotations[v1alpha1.IssuerNameAnnotationKey] {
@@ -305,9 +305,11 @@ func certificateMatchesSpec(crt *v1alpha1.Certificate, key crypto.Signer, cert *
 
 func scheduleRenewal(ctx context.Context, lister corelisters.SecretLister, calc calculateDurationUntilRenewFn, queueFn func(interface{}, time.Duration), crt *v1alpha1.Certificate) {
 	log := logf.FromContext(ctx)
+	secretNamespace := apiutil.GetSecretsNamespace(crt)
+
 	log = log.WithValues(
 		logf.RelatedResourceNameKey, crt.Spec.SecretName,
-		logf.RelatedResourceNamespaceKey, crt.Namespace,
+		logf.RelatedResourceNamespaceKey, secretNamespace,
 		logf.RelatedResourceKindKey, "Secret",
 	)
 
@@ -317,7 +319,7 @@ func scheduleRenewal(ctx context.Context, lister corelisters.SecretLister, calc 
 		return
 	}
 
-	cert, err := kube.SecretTLSCert(ctx, lister, crt.Namespace, crt.Spec.SecretName)
+	cert, err := kube.SecretTLSCert(ctx, lister, secretNamespace, crt.Spec.SecretName)
 	if err != nil {
 		if !errors.IsInvalidData(err) {
 			log.Error(err, "error getting secret for certificate resource")
@@ -453,11 +455,13 @@ func (c *controller) updateSecret(ctx context.Context, crt *v1alpha1.Certificate
 		secret.Annotations[v1alpha1.AltNamesAnnotationKey] = strings.Join(x509Cert.DNSNames, ",")
 		secret.Annotations[v1alpha1.IPSANAnnotationKey] = strings.Join(pki.IPAddressesToString(x509Cert.IPAddresses), ",")
 		secret.Annotations[v1alpha1.CertificateNameKey] = crt.Name
+		secret.Annotations[v1alpha1.CertificateNamespaceKey] = crt.Namespace
 	}
 
-	// Always set the certificate name label on the target secret
+	// Always set the certificate name and namespace labels on the target secret
 	// TODO: remove this behaviour - there is a max length limit of 64 chars on label values which causes issues here
 	secret.Labels[v1alpha1.CertificateNameKey] = crt.Name
+	secret.Labels[v1alpha1.CertificateNamespaceKey] = crt.Namespace
 
 	// set the actual values in the secret
 	secret.Data[corev1.TLSCertKey] = cert
@@ -494,7 +498,7 @@ func (c *controller) issue(ctx context.Context, issuer issuer.Interface, crt *v1
 		return nil
 	}
 
-	if _, err := c.updateSecret(ctx, crt, crt.Namespace, resp.Certificate, resp.PrivateKey, resp.CA); err != nil {
+	if _, err := c.updateSecret(ctx, crt, apiutil.GetSecretsNamespace(crt), resp.Certificate, resp.PrivateKey, resp.CA); err != nil {
 		s := messageErrorSavingCertificate + err.Error()
 		log.Error(err, "error saving certificate")
 		c.recorder.Event(crt, corev1.EventTypeWarning, errorSavingCertificate, s)
